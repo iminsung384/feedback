@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CLASS FEEDBACK</title>
+<style>
+  :root { --bg:#f5f7fb; --card:#fff; --text:#1f2937; --muted:#6b7280; --primary:#4f46e5; --line:#e5e7eb; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; font-family:system-ui,-apple-system,"Segoe UI","Malgun Gothic",sans-serif; background:var(--bg); color:var(--text); display:flex; flex-direction:column; }
+  header { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; }
+  h1 { margin:0; font-size:1.2rem; letter-spacing:.12em; }
+  main { flex:1; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .card { background:var(--card); border-radius:20px; box-shadow:0 8px 30px rgba(0,0,0,.07); padding:36px 28px; width:100%; max-width:560px; text-align:center; }
+  h2 { margin:0 0 24px; font-size:1.5rem; }
+  .votes { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+  button { font:inherit; cursor:pointer; border:1px solid var(--line); background:#fff; border-radius:14px; padding:16px 8px; transition:.15s; }
+  button:hover:not(:disabled) { border-color:var(--primary); transform:translateY(-2px); }
+  button:disabled { opacity:.5; cursor:default; }
+  .vote { font-size:1rem; display:flex; flex-direction:column; gap:8px; }
+  .vote span { font-size:2.4rem; }
+  .primary { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .danger { color:#dc2626; }
+  .small { padding:8px 14px; border-radius:10px; font-size:.9rem; }
+  .msg { margin-top:20px; min-height:1.4em; color:var(--primary); font-weight:600; }
+  .msg.err { color:#dc2626; }
+  form { display:flex; flex-direction:column; gap:12px; text-align:left; }
+  input { font:inherit; padding:12px; border:1px solid var(--line); border-radius:10px; width:100%; }
+  .stats { text-align:left; display:flex; flex-direction:column; gap:14px; margin:20px 0; }
+  .row .top { display:flex; justify-content:space-between; font-size:.95rem; margin-bottom:6px; }
+  .bar { height:16px; background:var(--line); border-radius:8px; overflow:hidden; }
+  .bar i { display:block; height:100%; width:0; transition:width .4s; }
+  .actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>CLASS FEEDBACK</h1>
+  <button id="loginBtn" class="small">관리자 로그인</button>
+</header>
+<main>
+  <section id="student" class="card">
+    <h2>오늘 수업은 어땠나요?</h2>
+    <div class="votes">
+      <button class="vote" data-r="satisfied"><span>😊</span>만족</button>
+      <button class="vote" data-r="neutral"><span>😐</span>보통</button>
+      <button class="vote" data-r="dissatisfied"><span>😞</span>불만족</button>
+    </div>
+    <div id="voteMsg" class="msg"></div>
+  </section>
+
+  <section id="login" class="card hidden">
+    <h2>관리자 로그인</h2>
+    <form id="loginForm">
+      <input id="email" type="email" placeholder="이메일" required autocomplete="username">
+      <input id="password" type="password" placeholder="비밀번호" required autocomplete="current-password">
+      <button class="primary" type="submit">로그인</button>
+      <button type="button" id="backBtn">돌아가기</button>
+    </form>
+    <div id="loginMsg" class="msg err"></div>
+  </section>
+
+  <section id="admin" class="card hidden">
+    <h2>수업 만족도 결과</h2>
+    <div><strong>전체 투표 수: <span id="total">0</span></strong></div>
+    <div class="stats" id="stats"></div>
+    <div class="actions">
+      <button class="small" id="refreshBtn">새로고침</button>
+      <button class="small danger" id="resetBtn">투표 결과 초기화</button>
+      <button class="small" id="logoutBtn">로그아웃</button>
+    </div>
+    <div id="adminMsg" class="msg err"></div>
+  </section>
+</main>
+
+<script src="/config.js"></script>
+<script type="module">
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const cfg = window.APP_CONFIG || {};
+const sb = createClient(cfg.SUPABASE_URL, cfg.SUPABASE_PUBLISHABLE_KEY);
+const $ = id => document.getElementById(id);
+const LABELS = [
+  { key: "satisfied", name: "😊 만족", color: "#22c55e" },
+  { key: "neutral", name: "😐 보통", color: "#f59e0b" },
+  { key: "dissatisfied", name: "😞 불만족", color: "#ef4444" },
+];
+
+function show(name) {
+  for (const s of ["student", "login", "admin"]) $(s).classList.toggle("hidden", s !== name);
+  $("loginBtn").classList.toggle("hidden", name === "admin");
+}
+
+document.querySelectorAll(".vote").forEach(btn => btn.addEventListener("click", async () => {
+  const buttons = document.querySelectorAll(".vote");
+  buttons.forEach(b => b.disabled = true);
+  const { error } = await sb.from("votes").insert({ rating: btn.dataset.r });
+  $("voteMsg").className = "msg" + (error ? " err" : "");
+  $("voteMsg").textContent = error ? "저장에 실패했습니다. 다시 시도해 주세요." : "투표가 완료되었습니다. 감사합니다.";
+  buttons.forEach(b => b.disabled = false);
+}));
+
+$("loginBtn").onclick = () => { $("loginMsg").textContent = ""; show("login"); };
+$("backBtn").onclick = () => show("student");
+
+$("loginForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const { error } = await sb.auth.signInWithPassword({ email: $("email").value, password: $("password").value });
+  if (error) { $("loginMsg").textContent = "로그인에 실패했습니다. 이메일과 비밀번호를 확인하세요."; return; }
+  $("password").value = "";
+  await loadResults();
+  show("admin");
+});
+
+async function loadResults() {
+  $("adminMsg").textContent = "";
+  const { data, error } = await sb.from("votes").select("rating");
+  if (error) { $("adminMsg").textContent = "결과를 불러오지 못했습니다."; return; }
+  const total = data.length;
+  $("total").textContent = total;
+  $("stats").innerHTML = LABELS.map(l => {
+    const n = data.filter(v => v.rating === l.key).length;
+    const pct = total ? Math.round(n / total * 1000) / 10 : 0;
+    return `<div class="row"><div class="top"><span>${l.name}</span><span>${n}표 (${pct}%)</span></div>
+      <div class="bar"><i style="width:${pct}%;background:${l.color}"></i></div></div>`;
+  }).join("");
+}
+
+$("refreshBtn").onclick = loadResults;
+
+$("resetBtn").onclick = async () => {
+  if (!confirm("모든 투표 결과를 초기화하시겠습니까? 삭제된 결과는 복구할 수 없습니다.")) return;
+  const { error } = await sb.from("votes").delete().gte("id", 0);
+  if (error) { $("adminMsg").textContent = "초기화에 실패했습니다."; return; }
+  await loadResults();
+};
+
+$("logoutBtn").onclick = async () => {
+  await sb.auth.signOut();
+  $("voteMsg").textContent = "";
+  show("student");
+};
+
+// 새로고침 시 기존 세션이 있으면 관리자 화면 유지
+const { data: { session } } = await sb.auth.getSession();
+if (session) { await loadResults(); show("admin"); }
+</script>
+</body>
+</html>
